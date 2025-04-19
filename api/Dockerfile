@@ -10,11 +10,10 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 
 # 3. Resolve e instala dependências dentro do sistema do contêiner
-#    --system : instala em /usr/local/lib/pythonX.Y/site-packages
-#    --no-cache-dir : não deixa cache de wheel
-RUN uv sync --system --no-cache-dir
+ENV UV_PROJECT_ENVIRONMENT=system
+RUN uv sync --locked
 
 # 4. Copia a aplicação (último passo para não invalidar cache à toa)
 COPY app/ .
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -1,5 +1,3 @@
-version: "3.9"
-
 networks:
   bigdata_net:
     driver: bridge        # todos no mesmo bridge network ⇒ DNS interno
@@ -10,7 +8,7 @@ volumes:
 services:
 # ---------------------- Zookeeper -------------------------------
   zookeeper:
-    image: bitnami/zookeeper:3.9
+    image: bitnami/zookeeper:latest
     container_name: zookeeper
     environment:
       - ALLOW_ANONYMOUS_LOGIN=yes
@@ -18,24 +16,25 @@ services:
 
 # ---------------------- Kafka -----------------------------------
   kafka:
-    image: bitnami/kafka:3.7
+    image: bitnami/kafka:3.5.1
     container_name: kafka
     depends_on: [zookeeper]
     networks: [bigdata_net]
     environment:
       - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
       - ALLOW_PLAINTEXT_LISTENER=yes
-      # uma porta para acesso interno (kafka:9092) e outra externa (localhost:19092)
       - KAFKA_CFG_LISTENERS=PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:19092
       - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:19092
       - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT
+      - KAFKA_CFG_BROKER_ID=1
+      - KAFKA_ENABLE_KRAFT=no
     ports:
       - "19092:19092"     # publica só a porta externa
 
 # ---------------------- Flink cluster ---------------------------
   jobmanager:
-    image: flink:2.0.0-scala_2.12-java11
+    image: flink:latest
     container_name: jobmanager
     networks: [bigdata_net]
     ports:
@@ -45,7 +44,7 @@ services:
       - JOB_MANAGER_RPC_ADDRESS=jobmanager
 
   taskmanager:
-    image: flink:2.0.0-scala_2.12-java11
+    image: flink:latest
     container_name: taskmanager
     networks: [bigdata_net]
     depends_on: [jobmanager]
@@ -56,16 +55,17 @@ services:
 
 # ---------------------- Spark cluster ---------------------------
   spark-master:
-    image: bitnami/spark:3.5
+    image: bitnami/spark:latest
     container_name: spark-master
     networks: [bigdata_net]
     environment:
       - SPARK_MODE=master
+      - SPARK_MASTER_OPTS=-Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.port=7071 -Dcom.sun.management.jmxremote.rmi.port=7071 -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Dcom.sun.management.jmxremote.local.only=false -Djava.rmi.server.hostname=spark-master
     ports:
-      - "8080:8080"       # Spark Master UI
+      - "8080:8080"       # Spark Master UI
 
   spark-worker:
-    image: bitnami/spark:3.5
+    image: bitnami/spark:latest
     container_name: spark-worker
     networks: [bigdata_net]
     depends_on: [spark-master]
@@ -74,11 +74,11 @@ services:
       - SPARK_MASTER_URL=spark://spark-master:7077
       - SPARK_WORKER_WEBUI_PORT=8082
     ports:
-      - "8082:8082"       # Spark Worker UI
+      - "8082:8082"       # Spark Worker UI
 
 # ---------------------- PostgreSQL ------------------------------
   postgres:
-    image: postgres:15-alpine
+    image: postgres:latest
     container_name: postgres
     networks: [bigdata_net]
     environment:
@@ -108,7 +108,7 @@ services:
 
 # ---------------- Prometheus -----------------------------------
   prometheus:
-    image: prom/prometheus:v2.52
+    image: prom/prometheus:latest
     container_name: prometheus
     networks: [bigdata_net]
     volumes:
@@ -118,7 +118,7 @@ services:
 
 # ---------------- Grafana --------------------------------------
   grafana:
-    image: grafana/grafana:11.0.0
+    image: grafana/grafana:latest
     container_name: grafana
     networks: [bigdata_net]
     environment:
@@ -145,32 +145,27 @@ services:
 
 # ---------------- JMX exporters --------------------------------
   kafka-jmx-exporter:
-    image: bitnami/jmx-exporter:0.20.0
+    build:
+      context: ./monitoring
+      dockerfile: Dockerfile.jmx-exporter
     container_name: kafka-jmx-exporter
     networks: [bigdata_net]
-    restart: unless-stopped
-    command: >
-      --config=/config/kafka.yml
-      --web.listen-address=:9404
-      --web.telemetry-path=/metrics
-      kafka:9999
+    command: "9404 /jmx_exporter/kafka-jmx.yml"
     volumes:
-      - ./monitoring/kafka-jmx.yml:/config/kafka.yml
+      - ./monitoring/kafka-jmx.yml:/jmx_exporter/kafka-jmx.yml
 
   spark-jmx-exporter:
-    image: bitnami/jmx-exporter:0.20.0
+    build:
+      context: ./monitoring
+      dockerfile: Dockerfile.jmx-exporter
     container_name: spark-jmx-exporter
     networks: [bigdata_net]
-    command: >
-      --config=/config/spark.yml
-      --web.listen-address=:9405
-      spark-master:7071
+    command: "9405 /jmx_exporter/spark-jmx.yml"
     volumes:
-      - ./monitoring/spark-jmx.yml:/config/spark.yml
-
+      - ./monitoring/spark-jmx.yml:/jmx_exporter/spark-jmx.yml
 
   postgres-exporter:
-    image: prometheuscommunity/postgres-exporter:v0.15.0
+    image: prometheuscommunity/postgres-exporter:latest
     container_name: postgres-exporter
     networks: [bigdata_net]
     environment:

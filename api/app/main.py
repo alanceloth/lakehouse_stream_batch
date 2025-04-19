@@ -16,6 +16,7 @@ import requests
 
 fake = Faker()
 app = FastAPI(title="Orders Generator")
+Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "kafka:9092")
 BATCH_DIR = os.getenv("BATCH_DIR", "/data/batch")
 RATE_PER_SEC = int(os.getenv("ORDER_RATE_PER_SEC", "100"))
@@ -143,7 +144,6 @@ def ping():
 
 @app.on_event("startup")
 def _init_metrics():
-    Instrumentator().instrument(app).expose(app, port=8001, endpoint="/metrics")
     # Inicia o spammer automaticamente se desejado
     if os.getenv("SPAMMER_AUTO_START", "1") == "1":
         spammer_running.set()
